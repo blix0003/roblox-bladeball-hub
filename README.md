@@ -1,2 +1,2 @@
 # roblox-bladeball-hub
-an auto parry script for robloc bladeball 
+an auto parry script for roblox bladeball 
