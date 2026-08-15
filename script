@@ -1,10 +1,10 @@
--- blix X blade ball
+-- blix x bladeball
 -- scripted by blix
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -22,12 +22,16 @@ local espObjects = {}
 local ballEspEnabled = false
 local ballTracerEnabled = false
 local ballVelocityEnabled = false
+local ballTargetEnabled = false
 local ballBeam, ballAtt0, ballAtt1, ballVelocityBillboard
+local ballTargetGui, ballTargetFrame, ballTargetLabel
+local ballTargetConn
 
 local autoParryEnabled = false
 local lastHitTime = 0
 local parrySensitivity = 1.25
 local closeRangeSpam = false
+local failSafeDistance = 11
 
 local autoClickerKey = Enum.KeyCode.F
 local isListeningForClickerKey = false
@@ -35,6 +39,7 @@ local autoClickerHolding = false
 
 local spinEnabled = false
 local spinSpeed = 12
+
 local fovUnlockEnabled = false
 local originalMaxZoom = player.CameraMaxZoomDistance
 local originalMinZoom = player.CameraMinZoomDistance
@@ -49,7 +54,7 @@ screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 420, 0, 620)
+mainFrame.Size = UDim2.new(0, 420, 0, 680)
 mainFrame.Position = UDim2.new(0, 40, 0, 50)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 mainFrame.BorderSizePixel = 0
@@ -136,6 +141,8 @@ yesBtn.Font = Enum.Font.GothamBold
 yesBtn.Parent = confirmFrame
 Instance.new("UICorner", yesBtn).CornerRadius = UDim.new(0, 6)
 
+-- scripted by blix
+
 local noBtn = Instance.new("TextButton")
 noBtn.Size = UDim2.new(0, 100, 0, 34)
 noBtn.Position = UDim2.new(1, -120, 1, -50)
@@ -195,15 +202,15 @@ local function createTab(name)
 	scroll.Parent = page
 
 	local list = Instance.new("UIListLayout")
-	list.Padding = UDim.new(0, 6)
+	list.Padding = UDim.new(0, 8)
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 	list.Parent = scroll
 
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 8)
+	padding.PaddingTop = UDim.new(0, 10)
 	padding.PaddingLeft = UDim.new(0, 8)
 	padding.PaddingRight = UDim.new(0, 8)
-	padding.PaddingBottom = UDim.new(0, 8)
+	padding.PaddingBottom = UDim.new(0, 10)
 	padding.Parent = scroll
 
 	tabs[name] = tabBtn
@@ -228,7 +235,7 @@ local visualsScroll = createTab("Visuals")
 
 local function createSection(parent, text, order)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 0, 22)
+	label.Size = UDim2.new(1, 0, 0, 24)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextColor3 = Color3.fromRGB(140, 160, 220)
@@ -285,7 +292,7 @@ local function createToggle(parent, text, order, default, callback)
 		callback(state)
 	end
 end
--- scripted by blix
+
 local function createSlider(parent, text, order, min, max, default, callback)
 	local frame = Instance.new("Frame")
 	frame.Size = UDim2.new(1, 0, 0, 50)
@@ -299,7 +306,7 @@ local function createSlider(parent, text, order, min, max, default, callback)
 	label.Size = UDim2.new(1, -20, 0, 20)
 	label.Position = UDim2.new(0, 12, 0, 4)
 	label.BackgroundTransparency = 1
-	label.Text = text .. ": " .. string.format("%.2f", default)
+	label.Text = text .. ": " .. string.format("%.0f", default)
 	label.TextColor3 = Color3.fromRGB(200, 200, 210)
 	label.TextSize = 13
 	label.Font = Enum.Font.Gotham
@@ -330,13 +337,12 @@ local function createSlider(parent, text, order, min, max, default, callback)
 	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
 	local dragging = false
-
 	local function update(val)
 		val = math.clamp(val, min, max)
 		local alpha = (val - min) / (max - min)
 		fill.Size = UDim2.new(alpha, 0, 1, 0)
 		knob.Position = UDim2.new(alpha, -8, 0.5, -8)
-		label.Text = text .. ": " .. string.format("%.2f", val)
+		label.Text = text .. ": " .. string.format("%.0f", val)
 		callback(val)
 	end
 
@@ -359,7 +365,7 @@ end
 
 local function doClick()
 	VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-	task.wait(0.018)
+	task.wait(0.025)
 	VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 end
 
@@ -384,7 +390,6 @@ end
 local function createESP(plr)
 	if plr == player then return end
 	removeESP(plr)
-
 	local char = plr.Character
 	if not char then return end
 	local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 3)
@@ -436,7 +441,6 @@ local function createESP(plr)
 		att0.Parent = localHRP
 		att1 = Instance.new("Attachment")
 		att1.Parent = hrp
-
 		beam = Instance.new("Beam")
 		beam.Attachment0 = att0
 		beam.Attachment1 = att1
@@ -462,13 +466,11 @@ end
 
 local function updatePlayerESP()
 	local localHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-
 	for plr, data in pairs(espObjects) do
 		if not plr.Parent then
 			removeESP(plr)
 			continue
 		end
-
 		local char = plr.Character
 		local alive = isPlayerAlive(plr)
 		local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -494,11 +496,10 @@ local function updatePlayerESP()
 			local nameLabel = data.Billboard:FindFirstChild("NameLabel")
 			local abilityLabel = data.Billboard:FindFirstChild("AbilityLabel")
 			local statusLabel = data.Billboard:FindFirstChild("StatusLabel")
-
 			if nameLabel then
 				nameLabel.Visible = showUsername
 				if showUsername then
-					nameLabel.Text = plr.DisplayName ~= plr.Name and (plr.DisplayName .. " (@" .. plr.Name .. ")") or plr.Name
+					nameLabel.Text = plr.DisplayName
 				end
 			end
 			if abilityLabel then
@@ -542,19 +543,32 @@ end
 local cachedBall, lastBallSearch = nil, 0
 
 local function getBall()
-	if cachedBall and cachedBall.Parent then return cachedBall end
+	local folder = workspace:FindFirstChild("Balls")
+	if not folder then
+		cachedBall = nil
+		return nil
+	end
+
+	if cachedBall and cachedBall.Parent == folder then
+		if cachedBall:GetAttribute("realBall") then
+			return cachedBall
+		end
+	end
+
 	local now = tick()
-	if now - lastBallSearch < 0.12 then return nil end
+	if now - lastBallSearch < 0.08 then
+		return cachedBall
+	end
 	lastBallSearch = now
 
-	local folder = workspace:FindFirstChild("Balls")
-	if not folder then cachedBall = nil return nil end
-
 	for _, v in ipairs(folder:GetChildren()) do
-		if v:GetAttribute("realBall") == true then
+		if v:GetAttribute("realBall") then
 			cachedBall = v
 			return v
 		end
+	end
+
+	for _, v in ipairs(folder:GetChildren()) do
 		if v:IsA("BasePart") then
 			cachedBall = v
 			return v
@@ -566,8 +580,112 @@ local function getBall()
 			end
 		end
 	end
+
 	cachedBall = nil
 	return nil
+end
+
+local function createBallTargetGui()
+	if ballTargetGui then
+		ballTargetGui:Destroy()
+	end
+	if ballTargetConn then
+		ballTargetConn:Disconnect()
+		ballTargetConn = nil
+	end
+
+	ballTargetGui = Instance.new("ScreenGui")
+	ballTargetGui.Name = "BlixBallTarget"
+	ballTargetGui.ResetOnSpawn = false
+	ballTargetGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	ballTargetGui.Parent = playerGui
+
+	ballTargetFrame = Instance.new("Frame")
+	ballTargetFrame.Size = UDim2.new(0, 240, 0, 56)
+	ballTargetFrame.Position = UDim2.new(1, -260, 0, 80)
+	ballTargetFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+	ballTargetFrame.BorderSizePixel = 0
+	ballTargetFrame.Active = true
+	ballTargetFrame.Draggable = true
+	ballTargetFrame.Parent = ballTargetGui
+	Instance.new("UICorner", ballTargetFrame).CornerRadius = UDim.new(0, 8)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0, 26)
+	title.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	title.BorderSizePixel = 0
+	title.Text = "Ball Target"
+	title.TextColor3 = Color3.fromRGB(220, 220, 240)
+	title.TextSize = 13
+	title.Font = Enum.Font.GothamBold
+	title.Parent = ballTargetFrame
+	Instance.new("UICorner", title).CornerRadius = UDim.new(0, 8)
+
+	local titleFix = Instance.new("Frame")
+	titleFix.Size = UDim2.new(1, 0, 0, 8)
+	titleFix.Position = UDim2.new(0, 0, 1, -8)
+	titleFix.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	titleFix.BorderSizePixel = 0
+	titleFix.Parent = title
+
+	ballTargetLabel = Instance.new("TextLabel")
+	ballTargetLabel.Size = UDim2.new(1, -14, 0, 24)
+	ballTargetLabel.Position = UDim2.new(0, 7, 0, 30)
+	ballTargetLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+	ballTargetLabel.BorderSizePixel = 0
+	ballTargetLabel.Text = "None"
+	ballTargetLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+	ballTargetLabel.TextSize = 13
+	ballTargetLabel.Font = Enum.Font.Gotham
+	ballTargetLabel.TextXAlignment = Enum.TextXAlignment.Center
+	ballTargetLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	ballTargetLabel.Parent = ballTargetFrame
+	Instance.new("UICorner", ballTargetLabel).CornerRadius = UDim.new(0, 4)
+end
+
+local function updateBallTargetGui()
+	if not ballTargetEnabled or not ballTargetLabel then return end
+
+	local ball = getBall()
+	local targetName = "None"
+	local isMe = false
+
+	if ball then
+		local rawTarget = ball:GetAttribute("target")
+		if rawTarget and rawTarget ~= "" and rawTarget ~= "None" then
+			local targetPlr = Players:FindFirstChild(tostring(rawTarget))
+			if targetPlr then
+				targetName = targetPlr.DisplayName
+				isMe = (targetPlr == player)
+			else
+				targetName = tostring(rawTarget)
+				isMe = (rawTarget == player.Name)
+			end
+		end
+	end
+
+	ballTargetLabel.Text = targetName
+
+	if isMe then
+		ballTargetLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
+		ballTargetFrame.BackgroundColor3 = Color3.fromRGB(45, 22, 22)
+	else
+		ballTargetLabel.TextColor3 = Color3.fromRGB(200, 200, 210)
+		ballTargetFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+	end
+end
+
+local function destroyBallTargetGui()
+	if ballTargetConn then
+		ballTargetConn:Disconnect()
+		ballTargetConn = nil
+	end
+	if ballTargetGui then
+		ballTargetGui:Destroy()
+		ballTargetGui = nil
+		ballTargetFrame = nil
+		ballTargetLabel = nil
+	end
 end
 
 local function clearBallESP()
@@ -590,26 +708,31 @@ local function updateBallESP()
 		return
 	end
 
+	local isTargetingMe = ball:GetAttribute("target") == player.Name
+
 	if ballTracerEnabled then
 		if not ballBeam then
 			ballAtt0 = Instance.new("Attachment")
 			ballAtt0.Parent = localHRP
 			ballAtt1 = Instance.new("Attachment")
 			ballAtt1.Parent = ball
-
 			ballBeam = Instance.new("Beam")
 			ballBeam.Attachment0 = ballAtt0
 			ballBeam.Attachment1 = ballAtt1
 			ballBeam.FaceCamera = true
 			ballBeam.Width0 = 0.55
 			ballBeam.Width1 = 0.55
-			ballBeam.Color = ColorSequence.new(Color3.fromRGB(255, 140, 0))
 			ballBeam.Transparency = NumberSequence.new(0.05)
 			ballBeam.LightEmission = 1
 			ballBeam.LightInfluence = 0
 			ballBeam.Parent = localHRP
 		end
 		if ballAtt1.Parent ~= ball then ballAtt1.Parent = ball end
+		if isTargetingMe then
+			ballBeam.Color = ColorSequence.new(Color3.fromRGB(255, 40, 40))
+		else
+			ballBeam.Color = ColorSequence.new(Color3.fromRGB(255, 140, 0))
+		end
 		ballBeam.Enabled = true
 	elseif ballBeam then
 		ballBeam.Enabled = false
@@ -618,11 +741,10 @@ local function updateBallESP()
 	if ballVelocityEnabled then
 		if not ballVelocityBillboard then
 			ballVelocityBillboard = Instance.new("BillboardGui")
-			ballVelocityBillboard.Size = UDim2.new(0, 120, 0, 30)
-			ballVelocityBillboard.StudsOffset = Vector3.new(0, 3, 0)
+			ballVelocityBillboard.Size = UDim2.new(0, 120, 0, 28)
+			ballVelocityBillboard.StudsOffset = Vector3.new(0, 3.2, 0)
 			ballVelocityBillboard.AlwaysOnTop = true
 			ballVelocityBillboard.Parent = ball
-
 			local velLabel = Instance.new("TextLabel")
 			velLabel.Name = "VelocityLabel"
 			velLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -634,7 +756,6 @@ local function updateBallESP()
 			velLabel.Parent = ballVelocityBillboard
 		end
 		if ballVelocityBillboard.Parent ~= ball then ballVelocityBillboard.Parent = ball end
-
 		local speed = 0
 		if ball:IsA("BasePart") then
 			local zoomies = ball:FindFirstChild("zoomies")
@@ -650,69 +771,89 @@ end
 
 local function checkAutoParry()
 	if not autoParryEnabled then return end
-
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
-
 	local ball = getBall()
 	if not ball or not ball:IsA("BasePart") then return end
-	if ball:GetAttribute("target") ~= player.Name then return end
+	local target = ball:GetAttribute("target")
+	if target ~= player.Name then return end
 
-	local ballPos, playerPos = ball.Position, hrp.Position
+	local ballPos = ball.Position
+	local playerPos = hrp.Position
 	local distance = (ballPos - playerPos).Magnitude
-
 	local ballVel = ball.AssemblyLinearVelocity
 	local zoomies = ball:FindFirstChild("zoomies")
-	if zoomies then ballVel = zoomies.VectorVelocity end
-
+	if zoomies then
+		ballVel = zoomies.VectorVelocity
+	end
 	local playerVel = hrp.AssemblyLinearVelocity
 	local ballSpeed = ballVel.Magnitude
-	if ballSpeed < 4 then return end
+	if ballSpeed < 5 then return end
+
+	local now = tick()
+	if distance < failSafeDistance then
+		local failSafeCooldown = closeRangeSpam and 0.045 or 0.065
+		if now - lastHitTime > failSafeCooldown then
+			lastHitTime = now
+			task.delay(math.random(15, 35) / 1000, doClick)
+			return
+		end
+	end
 
 	local relativeVel = ballVel - playerVel
-	local toPlayer = playerPos - ballPos
-	if toPlayer.Magnitude < 0.1 then return end
-
+	local toPlayer = (playerPos - ballPos)
+	if toPlayer.Magnitude < 0.05 then return end
 	local closingSpeed = relativeVel:Dot(toPlayer.Unit)
-	if closingSpeed < 1.5 then return end
+	if closingSpeed < 2 then return end
 
-	local roughTime = distance / math.max(closingSpeed, 1)
-	local predictedPos = playerPos + playerVel * math.clamp(roughTime, 0, 0.45)
-	local toPredicted = predictedPos - ballPos
-	if toPredicted.Magnitude < 0.1 then return end
-
-	local closingToPredicted = relativeVel:Dot(toPredicted.Unit)
-	if closingToPredicted < 1.2 then return end
-
-	local timeToHit = toPredicted.Magnitude / math.max(closingToPredicted, 1)
-	local maxTime = math.clamp((0.19 + ballSpeed / 130) * parrySensitivity, 0.17, 0.88)
-	local maxDistance = math.clamp((14.5 + ballSpeed * 0.16) * parrySensitivity, 14, 78)
-	local isVeryClose = distance < 15.5
+	local timeToHit = distance / math.max(closingSpeed, 1)
+	local maxTime = math.clamp((0.155 + ballSpeed / 145) * parrySensitivity, 0.13, 0.70)
+	local maxDistance = math.clamp((13 + ballSpeed * 0.14) * parrySensitivity, 12, 65)
+	local isVeryClose = distance < 12
+	local isMid = distance >= 12 and distance < 32
 
 	if (timeToHit <= maxTime and distance <= maxDistance) or isVeryClose then
-		local now = tick()
-		local cooldown = (closeRangeSpam and isVeryClose and 0.028)
-			or (isVeryClose and 0.042)
-			or math.clamp(0.09 - ballSpeed / 2000, 0.042, 0.09)
-
+		local cooldown
+		if closeRangeSpam and isVeryClose then
+			cooldown = 0.048
+		elseif isVeryClose then
+			cooldown = 0.060
+		elseif isMid then
+			cooldown = 0.075
+		else
+			cooldown = math.clamp(0.090 - (ballSpeed / 2800), 0.055, 0.090)
+		end
 		if now - lastHitTime > cooldown then
 			lastHitTime = now
-			doClick()
+			task.delay(math.random(18, 40) / 1000, doClick)
 		end
 	end
 end
 
 createSection(combatScroll, "Combat", 1)
-local forceAutoParry = createToggle(combatScroll, "Auto Parry", 2, false, function(s) autoParryEnabled = s end)
-createSlider(combatScroll, "Parry Sensitivity", 3, 0.7, 2.0, 1.25, function(v) parrySensitivity = v end)
-local forceCloseSpam = createToggle(combatScroll, "Close Range Spam", 4, false, function(s) closeRangeSpam = s end)
+
+local forceAutoParry = createToggle(combatScroll, "Auto Parry", 2, false, function(s)
+	autoParryEnabled = s
+end)
+
+createSlider(combatScroll, "Parry Sensitivity", 3, 0.7, 2.0, 1.25, function(v)
+	parrySensitivity = v
+end)
+
+createSlider(combatScroll, "Failsafe", 4, 1, 10, 2, function(v)
+	failSafeDistance = 9 + v
+end)
+
+local forceCloseSpam = createToggle(combatScroll, "Close Range Spam", 5, false, function(s)
+	closeRangeSpam = s
+end)
 
 local clickerFrame = Instance.new("Frame")
 clickerFrame.Size = UDim2.new(1, 0, 0, 34)
 clickerFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
 clickerFrame.BorderSizePixel = 0
-clickerFrame.LayoutOrder = 5
+clickerFrame.LayoutOrder = 6
 clickerFrame.Parent = combatScroll
 Instance.new("UICorner", clickerFrame).CornerRadius = UDim.new(0, 6)
 
@@ -745,55 +886,95 @@ clickerKeyBtn.MouseButton1Click:Connect(function()
 	clickerKeyBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 40)
 end)
 
-createSection(combatScroll, "Spin", 6)
-local forceSpin = createToggle(combatScroll, "Spin", 7, false, function(s)
+createSection(combatScroll, "Spin", 7)
+
+local forceSpin = createToggle(combatScroll, "Spin", 8, false, function(s)
 	spinEnabled = s
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid.AutoRotate = not s end
 end)
-createSlider(combatScroll, "Spin Speed", 8, 1, 30, 12, function(v) spinSpeed = v end)
 
-createSection(combatScroll, "Camera", 9)
-local forceFovUnlock = createToggle(combatScroll, "FOV Unlocker", 10, false, function(s)
+createSlider(combatScroll, "Spin Speed", 9, 1, 30, 12, function(v) spinSpeed = v end)
+
+createSection(combatScroll, "Camera", 10)
+
+local forceFovUnlock = createToggle(combatScroll, "FOV Unlocker", 11, false, function(s)
 	fovUnlockEnabled = s
 	player.CameraMaxZoomDistance = s and 9999 or originalMaxZoom
 	player.CameraMinZoomDistance = s and 0.5 or originalMinZoom
 end)
 
 createSection(visualsScroll, "Player ESP", 1)
+
 local forcePlayerESP = createToggle(visualsScroll, "Player ESP", 2, false, function(s)
 	playerEspEnabled = s
 	refreshAllPlayerESP()
 end)
+
 local forceTracer = createToggle(visualsScroll, "Tracer", 3, false, function(s)
 	tracerEnabled = s
 	updatePlayerESP()
 end)
+
 local forceHighlight = createToggle(visualsScroll, "Highlight", 4, false, function(s)
 	highlightEnabled = s
 	updatePlayerESP()
 end)
+
 local forceUsername = createToggle(visualsScroll, "Show Username", 5, false, function(s)
 	showUsername = s
 	updatePlayerESP()
 end)
+
 local forceAbility = createToggle(visualsScroll, "Show Ability", 6, false, function(s)
 	showAbility = s
 	updatePlayerESP()
 end)
 
-createSection(visualsScroll, "Ball ESP", 7)
-local forceBallESP = createToggle(visualsScroll, "Ball ESP", 8, false, function(s)
+createSection(visualsScroll, "Ball ESP", 8)
+
+local forceBallESP = createToggle(visualsScroll, "Ball ESP", 9, false, function(s)
 	ballEspEnabled = s
 	if not s then clearBallESP() end
 end)
-local forceBallTracer = createToggle(visualsScroll, "Ball Tracer", 9, false, function(s)
+
+local forceBallTracer = createToggle(visualsScroll, "Ball Tracer", 10, false, function(s)
 	ballTracerEnabled = s
 	updateBallESP()
 end)
-local forceBallVelocity = createToggle(visualsScroll, "Ball Velocity", 10, false, function(s)
+
+local forceBallVelocity = createToggle(visualsScroll, "Ball Velocity", 11, false, function(s)
 	ballVelocityEnabled = s
 	updateBallESP()
+end)
+
+local forceBallTarget = createToggle(visualsScroll, "Ball Target", 12, false, function(s)
+	ballTargetEnabled = s
+	if s then
+		createBallTargetGui()
+		updateBallTargetGui()
+		task.spawn(function()
+			while ballTargetEnabled and ballTargetGui do
+				local ball = getBall()
+				if ball and ball.Parent then
+					if ballTargetConn then
+						ballTargetConn:Disconnect()
+					end
+					ballTargetConn = ball:GetAttributeChangedSignal("target"):Connect(function()
+						updateBallTargetGui()
+					end)
+					updateBallTargetGui()
+					while ball.Parent and ballTargetEnabled do
+						task.wait(0.2)
+					end
+				else
+					task.wait(0.15)
+				end
+			end
+		end)
+	else
+		destroyBallTargetGui()
+	end
 end)
 
 keyBtn.MouseButton1Click:Connect(function()
@@ -817,16 +998,29 @@ player.CharacterAdded:Connect(function(char)
 	if humanoid and spinEnabled then humanoid.AutoRotate = false end
 end)
 
+local lastEspUpdate = 0
+local lastTargetUpdate = 0
+
 heartbeatConn = RunService.Heartbeat:Connect(function()
-	if playerEspEnabled then updatePlayerESP() end
+	local now = tick()
+	if playerEspEnabled and now - lastEspUpdate > 0.15 then
+		updatePlayerESP()
+		lastEspUpdate = now
+	end
 	if ballEspEnabled then updateBallESP() end
 	if autoParryEnabled then checkAutoParry() end
+	if ballTargetEnabled and now - lastTargetUpdate > 0.12 then
+		updateBallTargetGui()
+		lastTargetUpdate = now
+	end
 end)
 
 renderConn = RunService.RenderStepped:Connect(function()
 	if spinEnabled then
 		local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0) end
+		if hrp then
+			hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0)
+		end
 	end
 	if fovUnlockEnabled and player.CameraMaxZoomDistance < 9000 then
 		player.CameraMaxZoomDistance = 9999
@@ -837,9 +1031,9 @@ task.spawn(function()
 	while screenGui.Parent do
 		if autoClickerHolding then
 			doClick()
-			task.wait(0.055)
+			task.wait(0.06)
 		else
-			task.wait(0.04)
+			task.wait(0.08)
 		end
 	end
 end)
@@ -869,7 +1063,9 @@ inputBeganConn = UserInputService.InputBegan:Connect(function(input, gameProcess
 end)
 
 inputEndedConn = UserInputService.InputEnded:Connect(function(input)
-	if input.KeyCode == autoClickerKey then autoClickerHolding = false end
+	if input.KeyCode == autoClickerKey then
+		autoClickerHolding = false
+	end
 end)
 
 pages["Combat"].Visible = true
@@ -886,7 +1082,7 @@ noBtn.MouseButton1Click:Connect(function()
 	confirmFrame.Visible = false
 	mainFrame.Visible = true
 end)
--- scripted by blix
+
 yesBtn.MouseButton1Click:Connect(function()
 	forcePlayerESP(false)
 	forceTracer(false)
@@ -896,30 +1092,27 @@ yesBtn.MouseButton1Click:Connect(function()
 	forceBallESP(false)
 	forceBallTracer(false)
 	forceBallVelocity(false)
+	forceBallTarget(false)
 	forceAutoParry(false)
 	forceSpin(false)
 	forceFovUnlock(false)
 	forceCloseSpam(false)
-
 	keybindEnabled = false
 	autoParryEnabled = false
 	autoClickerHolding = false
 	spinEnabled = false
 	fovUnlockEnabled = false
 	closeRangeSpam = false
-
 	player.CameraMaxZoomDistance = originalMaxZoom
 	player.CameraMinZoomDistance = originalMinZoom
-
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid.AutoRotate = true end
-
 	if inputBeganConn then inputBeganConn:Disconnect() end
 	if inputEndedConn then inputEndedConn:Disconnect() end
 	if heartbeatConn then heartbeatConn:Disconnect() end
 	if renderConn then renderConn:Disconnect() end
-
 	clearBallESP()
+	destroyBallTargetGui()
 	for plr in pairs(espObjects) do removeESP(plr) end
 	screenGui:Destroy()
 end)
