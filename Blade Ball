@@ -1,5 +1,5 @@
--- blix x bladeball
 -- scripted by blix
+-- Blix x Blade Ball
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -31,7 +31,7 @@ local autoParryEnabled = false
 local lastHitTime = 0
 local parrySensitivity = 1.25
 local closeRangeSpam = false
-local failSafeDistance = 11
+local failSafeDistance = 25
 
 local autoClickerKey = Enum.KeyCode.F
 local isListeningForClickerKey = false
@@ -53,8 +53,10 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
+-- scripted by blix
+
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 420, 0, 680)
+mainFrame.Size = UDim2.new(0, 420, 0, 640)
 mainFrame.Position = UDim2.new(0, 40, 0, 50)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 mainFrame.BorderSizePixel = 0
@@ -140,8 +142,6 @@ yesBtn.TextSize = 14
 yesBtn.Font = Enum.Font.GothamBold
 yesBtn.Parent = confirmFrame
 Instance.new("UICorner", yesBtn).CornerRadius = UDim.new(0, 6)
-
--- scripted by blix
 
 local noBtn = Instance.new("TextButton")
 noBtn.Size = UDim2.new(0, 100, 0, 34)
@@ -363,9 +363,11 @@ local function createSlider(parent, text, order, min, max, default, callback)
 	end)
 end
 
+-- scripted by blix
+
 local function doClick()
 	VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-	task.wait(0.025)
+	task.wait(0.022)
 	VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 end
 
@@ -688,6 +690,8 @@ local function destroyBallTargetGui()
 	end
 end
 
+-- scripted by blix
+
 local function clearBallESP()
 	if ballBeam then ballBeam:Destroy() ballBeam = nil end
 	if ballAtt0 then ballAtt0:Destroy() ballAtt0 = nil end
@@ -793,10 +797,10 @@ local function checkAutoParry()
 
 	local now = tick()
 	if distance < failSafeDistance then
-		local failSafeCooldown = closeRangeSpam and 0.045 or 0.065
+		local failSafeCooldown = closeRangeSpam and 0.032 or 0.048
 		if now - lastHitTime > failSafeCooldown then
 			lastHitTime = now
-			task.delay(math.random(15, 35) / 1000, doClick)
+			task.delay(math.random(10, 25) / 1000, doClick)
 			return
 		end
 	end
@@ -826,7 +830,7 @@ local function checkAutoParry()
 		end
 		if now - lastHitTime > cooldown then
 			lastHitTime = now
-			task.delay(math.random(18, 40) / 1000, doClick)
+			task.delay(math.random(15, 35) / 1000, doClick)
 		end
 	end
 end
@@ -841,11 +845,7 @@ createSlider(combatScroll, "Parry Sensitivity", 3, 0.7, 2.0, 1.25, function(v)
 	parrySensitivity = v
 end)
 
-createSlider(combatScroll, "Failsafe", 4, 1, 10, 2, function(v)
-	failSafeDistance = 9 + v
-end)
-
-local forceCloseSpam = createToggle(combatScroll, "Close Range Spam", 5, false, function(s)
+local forceCloseSpam = createToggle(combatScroll, "Close Range Spam", 4, false, function(s)
 	closeRangeSpam = s
 end)
 
@@ -853,7 +853,7 @@ local clickerFrame = Instance.new("Frame")
 clickerFrame.Size = UDim2.new(1, 0, 0, 34)
 clickerFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
 clickerFrame.BorderSizePixel = 0
-clickerFrame.LayoutOrder = 6
+clickerFrame.LayoutOrder = 5
 clickerFrame.Parent = combatScroll
 Instance.new("UICorner", clickerFrame).CornerRadius = UDim.new(0, 6)
 
@@ -886,19 +886,19 @@ clickerKeyBtn.MouseButton1Click:Connect(function()
 	clickerKeyBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 40)
 end)
 
-createSection(combatScroll, "Spin", 7)
+createSection(combatScroll, "Spin", 6)
 
-local forceSpin = createToggle(combatScroll, "Spin", 8, false, function(s)
+local forceSpin = createToggle(combatScroll, "Spin", 7, false, function(s)
 	spinEnabled = s
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then humanoid.AutoRotate = not s end
 end)
 
-createSlider(combatScroll, "Spin Speed", 9, 1, 30, 12, function(v) spinSpeed = v end)
+createSlider(combatScroll, "Spin Speed", 8, 1, 30, 12, function(v) spinSpeed = v end)
 
-createSection(combatScroll, "Camera", 10)
+createSection(combatScroll, "Camera", 9)
 
-local forceFovUnlock = createToggle(combatScroll, "FOV Unlocker", 11, false, function(s)
+local forceFovUnlock = createToggle(combatScroll, "FOV Unlocker", 10, false, function(s)
 	fovUnlockEnabled = s
 	player.CameraMaxZoomDistance = s and 9999 or originalMaxZoom
 	player.CameraMinZoomDistance = s and 0.5 or originalMinZoom
